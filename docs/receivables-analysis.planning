@@ -1,0 +1,64 @@
+# Objective
+
+Build a local academic dashboard that makes Martinopolis municipal revenue data
+from 2021 through 2025 traceable, comparable, and understandable, with an
+evaluated simple statistical forecast.
+
+# Context
+
+The official TCE-SP annual revenue ZIP files are the reproducible source. The
+statewide CSVs are downloaded into an ignored cache and filtered to unmodified
+Martinopolis source values. The retained raw extracts contain 5,670 rows across
+five complete fiscal years.
+
+The source schema changed after 2021. The 2021 file exposes the detail account
+in `ds_subalinea`; files from 2022 onward expose it in `ds_tipo`. Principal IPTU,
+ISS, ICMS, and IPVA account codes also changed. Both layouts are explicitly
+mapped and the original hierarchy fields remain available for traceability.
+
+# Steps
+
+1. Download and checksum the official 2021–2025 TCE-SP revenue archives.
+2. Stream each large CSV and retain only exact `Martinópolis` rows.
+3. Normalize both observed TCE schemas into one monthly detail-row model.
+4. Classify principal revenue categories while preserving original codes and
+   descriptions.
+5. Validate source-row uniqueness, months, traceability, hierarchy, budget
+   availability, and forecast eligibility.
+6. Write normalized Parquet and JSON/Markdown validation artifacts atomically.
+7. Present overview, monthly evolution, equivalent-period comparison, forecast,
+   and data-quality information in Streamlit.
+8. Import a real partial 2026 CSV/XLS/XLSX only when its period or cumulative
+   value semantics are explicitly supplied.
+
+# Decisions
+
+- Use Python, Pandas, PyArrow, Plotly, Streamlit, and pytest.
+- Keep the MVP local and exclude database, API, authentication, Docker, hosting,
+  and machine-learning frameworks.
+- Treat TCE records as detail rows. Their hierarchy columns are descriptive and
+  are not independently summed as aggregate ancestors.
+- Preserve negative collection entries because they represent legitimate
+  adjustments or reversals.
+- Use deterministic code mappings for principal categories, including verified
+  legacy 2021 codes.
+- Replace filtered raw extracts and processed artifacts atomically so a failed
+  refresh cannot destroy the previous valid dataset.
+- Convert malformed manual monetary fields to actionable import errors and log
+  unexpected dashboard failures without exposing technical details to users.
+- Compare seasonal-naive and recursive 12-month trailing-mean forecasts on the
+  same final 12-month holdout. Select the lowest MAE, with seasonal naive winning
+  exact ties.
+- Do not display budget realization because the TCE source has no budget forecast
+  column.
+- Do not display 2026 until a real file is imported.
+
+# Open questions
+
+- A real 2026 export is still required to validate its columns, hierarchy, and
+  period-versus-cumulative semantics.
+- Water and sewage are supported by explicit description rules, but the current
+  TCE extracts did not produce stable principal-category series for them.
+- Official source totals external to the row-level TCE dataset were not supplied,
+  so reconciliation currently proves row traceability and internal aggregation,
+  not agreement with a separate published control total.

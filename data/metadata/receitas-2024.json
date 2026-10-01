@@ -1,0 +1,10 @@
+{
+  "source_url": "https://transparencia.tce.sp.gov.br/sites/default/files/conjunto-dados/receitas-2024.zip",
+  "source_year": 2024,
+  "retrieved_at": "2026-09-29T16:32:54.558524+00:00",
+  "source_checksum_sha256": "c7557c5359fd775c76afcdc8e3a94ceddd1358b16b869e60a441f50978c224cb",
+  "filtered_checksum_sha256": "dc59994dfe7166793c970a47880a939ebb4fd7196b4d64726fdf841303362bc1",
+  "source_encoding": "cp1252",
+  "row_count": 1109,
+  "raw_file": "data/raw/tce/martinopolis-receitas-2024.csv"
+}
