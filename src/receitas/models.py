@@ -55,11 +55,13 @@ class SummaryMetrics:
 class ForecastResult:
     method: str
     mae: float
+    mae_by_method: Mapping[str, float]
     holdout_start: pd.Period
     holdout_end: pd.Period
     horizon_start: pd.Period
     horizon_end: pd.Period
     observed: pd.Series
+    validation_estimated: pd.Series
     estimated: pd.Series
 
 

@@ -33,9 +33,10 @@ mapped and the original hierarchy fields remain available for traceability.
 
 # Decisions
 
-- Use Python, Pandas, PyArrow, Plotly, Streamlit, and pytest.
-- Keep the MVP local and exclude database, API, authentication, Docker, hosting,
-  and machine-learning frameworks.
+- Use Python, Pandas, PyArrow, Plotly, Streamlit, scikit-learn, and pytest.
+- Keep the MVP local and exclude database, API, authentication, Docker, and
+  hosting. The implementation now includes a scoped supervised Random Forest
+  model alongside the original statistical baselines.
 - Treat TCE records as detail rows. Their hierarchy columns are descriptive and
   are not independently summed as aggregate ancestors.
 - Preserve negative collection entries because they represent legitimate
@@ -46,9 +47,9 @@ mapped and the original hierarchy fields remain available for traceability.
   refresh cannot destroy the previous valid dataset.
 - Convert malformed manual monetary fields to actionable import errors and log
   unexpected dashboard failures without exposing technical details to users.
-- Compare seasonal-naive and recursive 12-month trailing-mean forecasts on the
-  same final 12-month holdout. Select the lowest MAE, with seasonal naive winning
-  exact ties.
+- Compare seasonal-naive, recursive 12-month trailing-mean, and Random Forest
+  forecasts on the same final 12-month holdout when enough training samples are
+  available. Select the lowest MAE, with seasonal naive winning ties.
 - Do not display budget realization because the TCE source has no budget forecast
   column.
 - Do not display 2026 until a real file is imported.

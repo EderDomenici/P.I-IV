@@ -279,22 +279,47 @@ def main() -> None:
             )
             figure.add_trace(
                 go.Scatter(
+                    x=forecast.validation_estimated.index.to_timestamp(),
+                    y=forecast.validation_estimated.values,
+                    name="Estimado no teste histórico",
+                    mode="lines+markers",
+                    line={"dash": "dot"},
+                )
+            )
+            figure.add_trace(
+                go.Scatter(
                     x=forecast.estimated.index.to_timestamp(),
                     y=forecast.estimated.values,
-                    name="Estimado",
+                    name="Projeção",
                     mode="lines+markers",
                     line={"dash": "dash"},
                 )
             )
             figure.update_layout(title=f"Previsão para {candidate.category}", yaxis_title="R$")
             st.plotly_chart(figure, width="stretch")
+            st.subheader("MAE no teste histórico")
+            st.table(
+                pd.DataFrame(
+                    [
+                        {
+                            "Método": method,
+                            "MAE (R$ por mês)": format_brl_currency(Decimal(str(mae))),
+                        }
+                        for method, mae in forecast.mae_by_method.items()
+                    ]
+                )
+            )
             st.write(
                 f"Categoria: **{candidate.category}** · Método: **{forecast.method}** · "
                 f"MAE histórico: **{format_brl_currency(Decimal(str(forecast.mae)))}** · "
                 f"Teste: **{forecast.holdout_start} a {forecast.holdout_end}** · "
                 f"Horizonte: **{forecast.horizon_start} a {forecast.horizon_end}**"
             )
-            st.caption("Estimativa baseada no histórico; não é garantia de arrecadação.")
+            st.caption(
+                "A Random Forest usa até 12 defasagens mensais e seno/cosseno do mês. "
+                "O MAE usa os 12 meses finais também empregados para selecionar o método; "
+                "não há um teste posterior independente. Projeções são estimativas, não garantias."
+            )
 
         st.subheader("Qualidade dos dados")
         issues = report.get("issues", [])

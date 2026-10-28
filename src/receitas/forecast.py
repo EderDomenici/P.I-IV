@@ -2,9 +2,21 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
 
 from receitas.errors import DataImportError
 from receitas.models import ForecastResult
+
+
+LAG_WINDOW = 12
+MIN_RANDOM_FOREST_TRAINING_SAMPLES = 24
+RANDOM_FOREST_PARAMETERS = {
+    "n_estimators": 200,
+    "max_depth": 4,
+    "min_samples_leaf": 2,
+    "random_state": 42,
+    "n_jobs": 1,
+}
 
 
 def _forecast_error(reason: str, action: str) -> DataImportError:
@@ -79,6 +91,38 @@ def mean_absolute_error(observed: pd.Series, predicted: pd.Series) -> float:
     return float(np.mean(np.abs(observed.astype(float) - predicted.astype(float))))
 
 
+def _forecast_features(history: list[float], target: pd.Period) -> list[float]:
+    month_angle = 2 * np.pi * (target.month - 1) / 12
+    return [*reversed(history[-LAG_WINDOW:]), np.sin(month_angle), np.cos(month_angle)]
+
+
+def random_forest_forecast(history: pd.Series, dates: pd.PeriodIndex) -> pd.Series:
+    if len(history) <= LAG_WINDOW:
+        raise _forecast_error(
+            "o histórico é curto demais para construir defasagens mensais",
+            "forneça mais observações antes de aplicar o modelo",
+        )
+
+    values = history.astype(float).tolist()
+    features: list[list[float]] = []
+    targets: list[float] = []
+    for index in range(LAG_WINDOW, len(values)):
+        target_period = history.index[index]
+        features.append(_forecast_features(values[:index], target_period))
+        targets.append(values[index])
+
+    model = RandomForestRegressor(**RANDOM_FOREST_PARAMETERS)
+    model.fit(np.asarray(features, dtype=float), np.asarray(targets, dtype=float))
+
+    predictions: list[float] = []
+    for target_period in dates:
+        feature = np.asarray([_forecast_features(values, target_period)], dtype=float)
+        prediction = float(model.predict(feature)[0])
+        predictions.append(prediction)
+        values.append(prediction)
+    return pd.Series(predictions, index=dates, dtype=float)
+
+
 def evaluate_and_forecast(series: pd.Series, horizon: int) -> ForecastResult:
     validate_forecast_series(series)
     if horizon < 1:
@@ -89,26 +133,43 @@ def evaluate_and_forecast(series: pd.Series, horizon: int) -> ForecastResult:
 
     seasonal_holdout = seasonal_naive(training, holdout.index)
     trailing_holdout = trailing_mean(training, holdout.index, window=12)
-    seasonal_mae = mean_absolute_error(holdout, seasonal_holdout)
-    trailing_mae = mean_absolute_error(holdout, trailing_holdout)
+    validation_predictions = {
+        "Sazonal ingênuo": seasonal_holdout,
+        "Média móvel de 12 meses": trailing_holdout,
+    }
+    if len(training) - LAG_WINDOW >= MIN_RANDOM_FOREST_TRAINING_SAMPLES:
+        validation_predictions["Random Forest"] = random_forest_forecast(
+            training, holdout.index
+        )
+    mae_by_method = {
+        method: mean_absolute_error(holdout, predicted)
+        for method, predicted in validation_predictions.items()
+    }
 
     future_dates = pd.period_range(numeric.index.max() + 1, periods=horizon, freq="M")
-    if seasonal_mae <= trailing_mae:
-        method = "Sazonal ingênuo"
-        mae = seasonal_mae
+    method = min(
+        mae_by_method,
+        key=lambda name: (
+            mae_by_method[name],
+            0 if name == "Sazonal ingênuo" else 1,
+        ),
+    )
+    if method == "Sazonal ingênuo":
         estimated = seasonal_naive(numeric, future_dates)
-    else:
-        method = "Média móvel de 12 meses"
-        mae = trailing_mae
+    elif method == "Média móvel de 12 meses":
         estimated = trailing_mean(numeric, future_dates, window=12)
+    else:
+        estimated = random_forest_forecast(numeric, future_dates)
 
     return ForecastResult(
         method=method,
-        mae=mae,
+        mae=mae_by_method[method],
+        mae_by_method=mae_by_method,
         holdout_start=holdout.index.min(),
         holdout_end=holdout.index.max(),
         horizon_start=future_dates.min(),
         horizon_end=future_dates.max(),
         observed=numeric.copy(),
+        validation_estimated=validation_predictions[method],
         estimated=estimated,
     )

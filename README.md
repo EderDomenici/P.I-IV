@@ -2,8 +2,8 @@
 
 Projeto acadêmico local para analisar receitas municipais de Martinópolis/SP.
 Ele utiliza dados públicos do Tribunal de Contas do Estado de São Paulo
-(TCE-SP), apresenta comparações entre exercícios e calcula uma previsão
-estatística simples avaliada em dados históricos.
+(TCE-SP), apresenta comparações entre exercícios e avalia previsões estatísticas
+e um modelo supervisionado em dados históricos.
 
 O dashboard **não identifica irregularidades**, não substitui análise contábil e
 não representa garantia de arrecadação futura.
@@ -14,7 +14,8 @@ não representa garantia de arrecadação futura.
 - 5.670 registros municipais rastreáveis até os recortes oficiais;
 - indicadores de arrecadação e composição por categoria;
 - evolução mensal e comparação de períodos equivalentes;
-- previsão sazonal ingênua comparada com média móvel de 12 meses;
+- comparação entre previsão sazonal ingênua, média móvel recursiva e Random
+  Forest com defasagens mensais e atributos sazonais;
 - avaliação cronológica com os 12 meses finais e apresentação do MAE;
 - importação opcional de arquivo parcial de 2026 em CSV, XLS ou XLSX.
 
@@ -122,8 +123,8 @@ O dashboard contém:
 - **Visão geral:** arrecadação e composição;
 - **Evolução mensal:** série filtrada por exercício e categoria;
 - **Comparação entre anos:** mesma janela de meses para todos os exercícios;
-- **Previsão e qualidade:** observados, estimados, método, MAE, horizonte e
-  ocorrências da validação.
+- **Previsão e qualidade:** observados, previsões do teste histórico, projeção,
+  método, MAEs comparados, horizonte e ocorrências da validação.
 
 A previsão orçamentária aparece como indisponível porque o conjunto de receitas
 do TCE-SP não fornece esse campo.
@@ -131,16 +132,27 @@ do TCE-SP não fornece esse campo.
 ## Previsão estatística
 
 Cada categoria candidata precisa ter pelo menos 36 meses completos, consecutivos
-e sem valores ausentes. Os últimos 12 meses são separados para avaliação.
+e sem valores ausentes. Os últimos 12 meses são separados para avaliação. O
+modelo Random Forest só participa da comparação quando o trecho de treinamento
+contém pelo menos 24 observações supervisionadas após a criação das defasagens
+(48 meses ou mais no total).
 
 São comparados:
 
 1. o valor observado no mesmo mês do ano anterior;
 2. a média recursiva dos 12 meses anteriores.
+3. uma regressão Random Forest com defasagens de 1 a 12 meses e seno/cosseno do
+   mês do ano (`n_estimators=200`, `max_depth=4`, `min_samples_leaf=2`,
+   `random_state=42`).
 
-O método com menor erro absoluto médio (MAE) é utilizado. Em empate, vence o
-método sazonal ingênuo por ser mais simples de explicar. Dados futuros nunca são
-usados no treinamento ou na avaliação dos meses anteriores.
+Os métodos elegíveis usam a mesma janela cronológica final de 12 meses. O Random
+Forest é treinado apenas com exemplos construídos a partir do trecho anterior ao
+holdout; na avaliação multimensal, previsões anteriores alimentam as defasagens
+dos meses seguintes. O método com menor MAE no holdout é utilizado para a
+projeção final; em empate, vence o método sazonal ingênuo. O MAE exibido é na
+mesma janela usada para selecionar o método, portanto não é uma avaliação
+posterior independente nem uma garantia de desempenho futuro. O modelo não
+calcula intervalos de incerteza e as estimativas não são truncadas se negativas.
 
 ## Testes
 
