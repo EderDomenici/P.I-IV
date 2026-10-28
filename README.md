@@ -109,6 +109,8 @@ Colunas reconhecidas incluem variações de:
 
 Uma planilha sem identificação segura de período, valor ou hierarquia é rejeitada
 com uma mensagem indicando a correção necessária.
+Ano e mês devem ser inteiros válidos (mês de 1 a 12), e valores monetários não
+podem ser `NaN` ou infinitos.
 
 ## Execução do dashboard
 

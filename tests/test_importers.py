@@ -30,6 +30,15 @@ def test_parse_brazilian_decimal(raw: object, expected: Decimal | None) -> None:
     assert parse_brazilian_decimal(raw) == expected
 
 
+@pytest.mark.parametrize(
+    "raw",
+    ["NaN", "Infinity", "-Infinity", Decimal("Infinity"), float("inf")],
+)
+def test_parse_brazilian_decimal_rejects_non_finite_values(raw: object) -> None:
+    with pytest.raises(ValueError, match="non-finite"):
+        parse_brazilian_decimal(raw)
+
+
 def _write_tce_fixture(tmp_path: Path) -> Path:
     frame = pd.DataFrame(
         {
@@ -117,10 +126,14 @@ def test_manual_import_rejects_ambiguous_value_semantics(tmp_path: Path) -> None
     assert "informe se os valores são do período ou acumulados" in captured.value.user_message
 
 
-def test_manual_import_reports_invalid_currency_as_actionable_error(tmp_path: Path) -> None:
+@pytest.mark.parametrize("value", ["valor-invalido", "NaN", "Infinity", "-Infinity"])
+def test_manual_import_reports_invalid_currency_as_actionable_error(
+    tmp_path: Path, value: str
+) -> None:
     path = tmp_path / "receitas-2026.csv"
     path.write_text(
-        "ano;mes;codigo;especificacao;valor\n2026;1;11125001;IPTU;valor-invalido\n",
+        "ano;mes;codigo;especificacao;valor\n"
+        f"2026;1;11125001;IPTU;{value}\n",
         encoding="utf-8",
     )
 
@@ -129,6 +142,27 @@ def test_manual_import_reports_invalid_currency_as_actionable_error(tmp_path: Pa
 
     assert path.name in captured.value.user_message
     assert "valor monetário" in captured.value.user_message
+
+
+@pytest.mark.parametrize(
+    ("month", "expected_message"),
+    [
+        ("13", "mês de referência fora do intervalo"),
+        ("NaN", "ano ou mês de referência inválido"),
+    ],
+)
+def test_manual_import_reports_invalid_month_as_actionable_error(
+    tmp_path: Path, month: str, expected_message: str
+) -> None:
+    path = tmp_path / "receitas-2026.csv"
+    path.write_text(
+        "ano;mes;codigo;especificacao;arrecadado_periodo;tipo_linha\n"
+        f"2026;{month};11125001;IPTU;100,00;detalhe\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(DataImportError, match=expected_message):
+        normalize_manual_file(path, value_semantics="period")
 
 
 def test_cumulative_conversion_rejects_missing_month() -> None:

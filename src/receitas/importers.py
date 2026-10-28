@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from decimal import Decimal, InvalidOperation
+from math import isfinite
 from pathlib import Path
 from typing import Literal
 
@@ -46,18 +47,71 @@ def parse_brazilian_decimal(value: object) -> Decimal | None:
     if value is None or (isinstance(value, float) and pd.isna(value)):
         return None
     if isinstance(value, Decimal):
-        return value
-    if isinstance(value, (int, float)):
-        return Decimal(str(value))
-    text = str(value).strip().replace("R$", "").replace("\xa0", "").replace(" ", "")
-    if not text:
-        return None
-    if "," in text:
-        text = text.replace(".", "").replace(",", ".")
+        amount = value
+    elif isinstance(value, (int, float)):
+        amount = Decimal(str(value))
+    else:
+        text = str(value).strip().replace("R$", "").replace("\xa0", "").replace(" ", "")
+        if not text:
+            return None
+        if "," in text:
+            text = text.replace(".", "").replace(",", ".")
+        try:
+            amount = Decimal(text)
+        except InvalidOperation as error:
+            raise ValueError(f"Invalid Brazilian decimal: {value!r}") from error
+    if not amount.is_finite():
+        raise ValueError(f"Invalid non-finite Brazilian decimal: {value!r}")
+    return amount
+
+
+def _parse_period_columns(
+    frame: pd.DataFrame,
+    path: Path,
+    year_column: str,
+    month_column: str,
+) -> tuple[pd.Series, pd.Series, pd.PeriodIndex]:
     try:
-        return Decimal(text)
-    except InvalidOperation as error:
-        raise ValueError(f"Invalid Brazilian decimal: {value!r}") from error
+        years = pd.to_numeric(frame[year_column], errors="raise")
+        months = pd.to_numeric(frame[month_column], errors="raise")
+    except (TypeError, ValueError) as error:
+        raise DataImportError(
+            path.name,
+            "há ano ou mês de referência inválido",
+            "informe anos e meses numéricos inteiros",
+        ) from error
+
+    valid_years = years.notna() & years.map(lambda value: isfinite(float(value)))
+    valid_months = months.notna() & months.map(lambda value: isfinite(float(value)))
+    if (
+        not valid_years.all()
+        or not valid_months.all()
+        or not years.mod(1).eq(0).all()
+        or not months.mod(1).eq(0).all()
+    ):
+        raise DataImportError(
+            path.name,
+            "há ano ou mês de referência inválido",
+            "informe anos e meses numéricos inteiros",
+        )
+
+    years = years.astype(int)
+    months = months.astype(int)
+    if not months.between(1, 12).all():
+        raise DataImportError(
+            path.name,
+            "há mês de referência fora do intervalo de 1 a 12",
+            "corrija os meses da fonte",
+        )
+    try:
+        periods = pd.PeriodIndex.from_fields(year=years, month=months, freq="M")
+    except (OverflowError, TypeError, ValueError) as error:
+        raise DataImportError(
+            path.name,
+            "há ano de referência fora do intervalo suportado",
+            "corrija os anos da fonte",
+        ) from error
+    return years, months, periods
 
 
 def _split_code_description(value: object) -> tuple[str, str]:
@@ -83,11 +137,12 @@ def normalize_tce_file(path: Path) -> pd.DataFrame:
             "verifique o esquema anual publicado pelo TCE-SP",
         )
     identities = frame[detail_column].map(_split_code_description)
-    years = frame["ano_exercicio"].astype(int)
-    months = frame["mes_referencia"].astype(int)
+    years, months, periods = _parse_period_columns(
+        frame, path, "ano_exercicio", "mes_referencia"
+    )
     normalized = pd.DataFrame(
         {
-            "period": pd.PeriodIndex.from_fields(year=years, month=months, freq="M"),
+            "period": periods,
             "fiscal_year": years,
             "month": months,
             "revenue_code": identities.map(lambda item: item[0]),
@@ -101,7 +156,9 @@ def normalize_tce_file(path: Path) -> pd.DataFrame:
             ),
             "initial_forecast": None,
             "updated_forecast": None,
-            "collected_period": frame["vl_arrecadacao"].map(parse_brazilian_decimal),
+            "collected_period": _parse_money_column(
+                frame["vl_arrecadacao"], path, "vl_arrecadacao"
+            ),
             "collected_cumulative": None,
             "hierarchy_level": "detail",
             "is_aggregate": False,
@@ -222,8 +279,9 @@ def normalize_manual_file(
             "revise os nomes das colunas conforme o README",
         ) from error
 
-    years = frame[year_column].astype(int)
-    months = frame[month_column].astype(int)
+    years, months, periods = _parse_period_columns(
+        frame, path, year_column, month_column
+    )
     source_column = _column(columns, ("fonte", "fonte_recurso"))
     application_column = _column(columns, ("codigo_aplicacao", "aplicacao"))
     line_type_column = _column(columns, ("tipo_linha", "nivel", "nivel_hierarquico"))
@@ -232,7 +290,7 @@ def normalize_manual_file(
     values = _parse_money_column(frame[value_column], path, value_column)
     normalized = pd.DataFrame(
         {
-            "period": pd.PeriodIndex.from_fields(year=years, month=months, freq="M"),
+            "period": periods,
             "fiscal_year": years,
             "month": months,
             "revenue_code": frame[code_column].map(_clean_code),

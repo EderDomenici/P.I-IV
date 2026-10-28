@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from app import (
+    available_comparison_years,
     format_brl_currency,
     format_percentage,
     forecast_for_selection,
@@ -56,6 +57,12 @@ def test_select_forecast_candidate_explains_insufficient_data() -> None:
 
     with pytest.raises(DataImportError, match="nenhuma categoria"):
         select_forecast_candidate(frame)
+
+
+def test_available_comparison_years_omits_years_without_filtered_rows() -> None:
+    frame = pd.DataFrame({"fiscal_year": [2024, 2025, 2025]})
+
+    assert available_comparison_years(frame, [2023, 2024, 2025]) == [2024, 2025]
 
 
 def test_validation_issue_message_translates_known_codes_and_preserves_fallback() -> None:

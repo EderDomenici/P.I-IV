@@ -141,6 +141,11 @@ def forecast_for_selection(frame: pd.DataFrame) -> tuple[ForecastCandidate, Fore
     return candidate, evaluate_and_forecast(candidate.series, horizon=horizon)
 
 
+def available_comparison_years(frame: pd.DataFrame, years: list[int]) -> list[int]:
+    available = set(int(year) for year in frame["fiscal_year"].unique())
+    return sorted(available.intersection(years))
+
+
 def _chart_frame(frame: pd.DataFrame, amount_column: str = "amount") -> pd.DataFrame:
     result = frame.copy()
     result[amount_column] = result[amount_column].map(float)
@@ -244,14 +249,22 @@ def main() -> None:
         st.plotly_chart(figure, width="stretch")
 
     with comparison_tab:
-        if len(years) < 2:
+        comparison_years = available_comparison_years(filtered, years)
+        if len(comparison_years) < 2:
             st.info("Selecione pelo menos dois exercícios para comparar.")
         else:
-            comparison = equivalent_period_comparison(filtered, years)
+            comparison = equivalent_period_comparison(filtered, comparison_years)
             last_comparable_month = int(comparison["comparison_last_month"].iloc[0])
             totals = comparison.groupby("fiscal_year", as_index=False)["amount"].apply(
                 lambda values: float(sum(values))
             )
+            omitted_years = sorted(set(years).difference(comparison_years))
+            if omitted_years:
+                st.info(
+                    "Exercícios sem registros após os filtros foram omitidos: "
+                    + ", ".join(str(year) for year in omitted_years)
+                    + "."
+                )
             figure = px.bar(
                 totals,
                 x="fiscal_year",
